@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>transactions</title>
+  <script defer=""
+  src="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", function () {
+ var mathElements = document.getElementsByClassName("math");
+ var macros = [];
+ for (var i = 0; i < mathElements.length; i++) {
+  var texText = mathElements[i].firstChild;
+  if (mathElements[i].tagName == "SPAN") {
+   katex.render(texText.data, mathElements[i], {
+    displayMode: mathElements[i].classList.contains('display'),
+    throwOnError: false,
+    macros: macros,
+    fleqn: false
+   });
+}}});
+  </script>
+  <link rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/@antonz/codapi@0.20.0/dist/snippet.css">
+  <style>
+    body { max-width: 48em; margin: 2em auto; padding: 0 1em; font-family: system-ui, sans-serif; line-height: 1.6; }
+    pre { background: #f5f5f5; padding: 1em; overflow-x: auto; border-radius: 4px; }
+    code { font-size: 0.95em; }
+    table { border-collapse: collapse; border-spacing: 0; margin: 1em 0; }
+    th, td { border: 1px solid #999; padding: 0.3em 0.8em; }
+    codapi-output { line-height: 1.3; }
+    codapi-snippet + .sourceCode { margin-top: 0.5em; }
+    .sourceCode { margin-top: 0; margin-bottom: 0; }
+  </style>
+</head>
+<body>
+<h1>transactions</h1>
+<p>So far we’ve been treating DBs as inanimate objects: they hold data,
+we can look at the data, and that’s it. But SQL databases are so popular
+because they deal with <em>changes</em> very well. Let’s see some
+examples.</p>
+<p>I’m in a good mood today and decided to give everyone free points! I
+vibed a quick python script to do this:</p>
+<table>
+<thead>
+<tr>
+<th>UID</th>
+<th>score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>39</td>
+</tr>
+<tr>
+<td>2</td>
+<td>24</td>
+</tr>
+<tr>
+<td>3</td>
+<td>40</td>
+</tr>
+<tr>
+<td>4</td>
+<td>35</td>
+</tr>
+<tr>
+<td>…</td>
+<td>…</td>
+</tr>
+</tbody>
+</table>
+<p>Uh oh! My computer crashed halfway through, and I don’t know who
+still haven’t got the free points!</p>
+<p>You don’t like that, because some of you got the points and some
+didn’t. You would be fine if either none of you get the points or all of
+you did.</p>
+<p>Let’s try another experiment. This time, your fate is in your own
+hands: steal points from your enemies! Subtract some points from someone
+and add it to your own. Here’s the Google sheet, go!</p>
+<p>Well, that was a mess. The total score no longer add up, meaning our
+DB is not <em>consistent</em>!</p>
+<p>The problem is that you were <em>interfering</em> with each
+other!</p>
+<p>One solution is to go <em>one at a time</em>, so that every change is
+made in <em>isolation</em>. In other words, we <em>serialize</em> the
+changes.</p>
+<p>Another solution is we first claim a <em>lock</em> on a piece of data
+before changing it. This time, wait a few seconds before editing a cell,
+and only edit it if no one else is trying to edit.</p>
+<p>Formally, a group of actions on a DB is called a
+<em>transaction</em>. DBs like SQLite guarantee transactions (tx)
+are:</p>
+<div class="incremental">
+<ul class="incremental">
+<li><strong>Atomic</strong>: either all or none of the actions are
+applied (all or nothing)</li>
+<li><strong>Consistent</strong>: after a tx finishes, the DB is in a
+consistent state</li>
+<li><strong>Isolated</strong>: txs do not interfere with each other</li>
+<li><strong>Durable</strong>: once a tx finishes, its effect is kept
+forever</li>
+</ul>
+</div>
+<p>This is known as <em>ACID</em> on the street.</p>
+<p>Note that <em>consistent</em> is a high-level property, usually
+achieved with the other 3.</p>
+<ul>
+<li>When only some of you got the extra credit, our tx was not
+<em>atomic</em></li>
+<li>When you were stealing points and had conflicts, you were not
+<em>isolated</em>, leaving the DB <em>inconsistent</em></li>
+<li>We haven’t see <em>durable</em> yet, but if the computer dies before
+writing data to disk, the data would be lost</li>
+</ul>
+<p>Luckily, the DB handles all these for us!</p>
+<p>But it’s still important to understand what’s going on, in case
+anything goes sideways.</p>
+<p>There are several different ways to ensure <em>atomicity</em>. The
+main idea is to a tx to be explicitly <code>COMMIT</code>ted:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">BEGIN</span> <span class="kw">TRANSACTION</span>;</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">..</span>.;</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">INSERT</span> <span class="op">..</span>.;</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="kw">COMMIT</span>;</span></code></pre></div>
+<p>You can think of each tx as making a local copy of the DB, and any
+operation in that tx only acts upon the local copy, until the tx is
+committed which writes the DB to the global one.</p>
+<p>Try running the following concurrently in 2 SQLite sessions<a
+href="#fn1" class="footnote-ref" id="fnref1"
+role="doc-noteref"><sup>1</sup></a>:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">--     SESSION 1                SESSION 2</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">create</span> <span class="kw">table</span> r (x <span class="dt">int</span>);</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">insert</span> <span class="kw">into</span> r <span class="kw">values</span> (<span class="dv">1</span>);</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>                             <span class="kw">select</span> <span class="op">*</span> <span class="kw">from</span> r;</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">begin</span> <span class="kw">transaction</span>;</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">insert</span> <span class="kw">into</span> r <span class="kw">values</span> (<span class="dv">2</span>);</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>                             <span class="kw">select</span> <span class="op">*</span> <span class="kw">from</span> r;</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="kw">commit</span>;</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>                             <span class="kw">select</span> <span class="op">*</span> <span class="kw">from</span> r;</span></code></pre></div>
+<p>You’ll see the change made within the tx does not take effect until
+after <code>COMMIT</code>.</p>
+<p>The easiest way to guarantee <em>isolation</em> is to
+<em>serialize</em> the transactions – running them one at a time. This
+is pretty much what SQLite does!<a href="#fn2" class="footnote-ref"
+id="fnref2" role="doc-noteref"><sup>2</sup></a> So why don’t we just
+leave it at that?</p>
+<p>Because performance. When we serialized our score updates, we all had
+to wait in line, even though we could have used some parallelism.</p>
+<div class="columns">
+<div class="column">
+<p>So on one hand, serialization guarantees consistency but is slow</p>
+</div><div class="column">
+<p>On the other hand, concurrency is fast but is inconsistent</p>
+</div>
+</div>
+<p>The key idea of TX processing is to preserve consistency while
+improving concurrency, which is usually done by giving the
+<em>illusion</em> of serial execution while running concurrently.
+Magic!</p>
+<p>First off, if 2 TX touch different data, they can of course run
+concurrently:</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td>R(B)</td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td>W(B)</td>
+</tr>
+</tbody>
+</table>
+<p>Here R(A) means reading a DB item A, and W(A) writes to A. You can
+think of a DB item as a row, but it depends on the context.</p>
+<p>The table here shows the <em>schedule</em><a href="#fn3"
+class="footnote-ref" id="fnref3" role="doc-noteref"><sup>3</sup></a> of
+the txs which is a record of actions taken over time.</p>
+<p>We say a schedule is <em>serial</em> if all actions are strictly
+ordered:</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>R(B)</td>
+</tr>
+<tr>
+<td></td>
+<td>W(B)</td>
+</tr>
+</tbody>
+</table>
+<p>In our example, the concurrent schedule happens to be
+<em>equivalent</em> to the serial one, because the TX involve
+independent items:</p>
+<div class="columns">
+<div class="column">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td>R(B)</td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td>W(B)</td>
+</tr>
+</tbody>
+</table>
+</div><div class="column">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>R(B)</td>
+</tr>
+<tr>
+<td></td>
+<td>W(B)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Formally, two TX are <em>equivalent</em> if they produce the same
+result no matter what is read or written. . . . And we say the
+concurrent schedule is <em>serializable</em>, i.e., it is equivalent to
+some serial schedule.</p>
+<p>The main idea of DBs is that we want to allow
+<strong>serializable</strong>, yet concurrent
+<strong>transaction</strong> <strong>schedules</strong> like the
+above.<a href="#fn4" class="footnote-ref" id="fnref4"
+role="doc-noteref"><sup>4</sup></a></p>
+<p>Note that two serial schedules are not necessarily equivalent:</p>
+<div class="columns">
+<div class="column">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A = 2*A</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>A = 2+A</td>
+</tr>
+</tbody>
+</table>
+</div><div class="column">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td>A = 2+A</td>
+</tr>
+<tr>
+<td>A = 2*A</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>If we start with A = 1, the first schedule would result in A = 4,
+while the second in A = 6.</p>
+<p>For a schedule to be <em>serializable</em>, it only needs to be
+equivalent to <em>some</em> serial one, but we don’t know which one.</p>
+<p>There’s also the notion of <em>strict serializability</em>, which
+basically says “first come, first serve”:</p>
+<ul>
+<li>A schedule is strict-serializable if it’s equivalent to a serial
+schedule that runs the TXs in the same order they arrive.</li>
+</ul>
+<p>This can be important for e.g. ticket sales.</p>
+<p>To check if a schedule is serializable, we first need to know how to
+check if 2 schedules are equivalent.</p>
+<p>To do that, we check if we can <em>reorder</em> one into another,
+while avoiding <em>conflicts</em>:</p>
+<div class="columns">
+<div class="column" style="width:30%;">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td>R(B)</td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td>W(B)</td>
+</tr>
+</tbody>
+</table>
+</div><div class="column" style="width:30%;">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>R(B)</td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>W(B)</td>
+</tr>
+</tbody>
+</table>
+</div><div class="column" style="width:30%;">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>R(B)</td>
+</tr>
+<tr>
+<td></td>
+<td>W(B)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="incremental">
+<ol class="incremental" type="1">
+<li><p>Because reading data never causes conflict, we are free to
+reorder R(A) and R(B) any way we like.</p></li>
+<li><p>Since writing to different items do not conflict, we can also
+reorder W(A) and W(B).</p></li>
+<li><p>There’s also no conflict between W(A) and R(B), so we swap one
+more time and the schedule is serial.</p></li>
+</ol>
+</div>
+<p>In general, two actions are in conflict if they:</p>
+<ul>
+<li>operate on the same DB item</li>
+<li>one of them is a write</li>
+</ul>
+<p>For example, the following schedules are not equivalent, because they
+cannot be reordered into each other:</p>
+<div class="columns">
+<div class="column">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>R(A)</td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>W(A)</td>
+</tr>
+</tbody>
+</table>
+</div><div class="column">
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td>W(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>R(A)</td>
+</tr>
+<tr>
+<td></td>
+<td>W(A)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Indeed, the first schedule is not <em>serializable</em>, and the two
+TXs are attempting to change the same item at the same time.</p>
+<p>For a concrete example:</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>x=</code>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>y=2x</code></td>
+<td><code>u=</code>R(A)</td>
+</tr>
+<tr>
+<td>W(A)<code>=y</code></td>
+<td><code>v=2u</code></td>
+</tr>
+<tr>
+<td></td>
+<td>W(A)<code>=v</code></td>
+</tr>
+</tbody>
+</table>
+<p>If the TXs run in sequence, we would multiply A by 4, but the
+schedule above would only multiply by 2.</p>
+<p>In other words, <em>no serial schedule</em> would have produced the
+same result.</p>
+<p>This gives us an algorithm to check for serializability:</p>
+<ul>
+<li>First compute all possible serial schedules involving the TXs</li>
+<li>For each serial schedule, check if it can be reordered into the
+given one</li>
+</ul>
+<p>But this is hopelessly slow: there are exponentially many serial
+schedules, and each can have exponentially many reorderings.</p>
+<p>We can check serializability with a powerful tool called the
+<em>precedence graph</em>. Consider the following schedule:</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+<th>T<sub>3</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R(B)</td>
+<td>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>W(A)</td>
+<td></td>
+</tr>
+<tr>
+<td>W(B)</td>
+<td></td>
+<td>R(A)</td>
+</tr>
+<tr>
+<td></td>
+<td>R(B)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>W(B)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The graph has a node per transaction, and an edge <span
+class="math inline">T_i \to T_j</span> if there’s a pair of actions
+<span class="math inline">a_i \in T_i</span> and <span
+class="math inline">a_j \in T_j</span> s.t.:</p>
+<ul>
+<li><span class="math inline">a_i</span> occurs no later than <span
+class="math inline">a_j</span></li>
+<li>they conflict with each other</li>
+</ul>
+<p><span class="math display"> T_1 \to T_2 \to T_3 </span></p>
+<p>Let’s also check the schedule that we know is not serializable:</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>x=</code>R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>y=2x</code></td>
+<td><code>u=</code>R(A)</td>
+</tr>
+<tr>
+<td>W(A)<code>=y</code></td>
+<td><code>v=2u</code></td>
+</tr>
+<tr>
+<td></td>
+<td>W(A)<code>=v</code></td>
+</tr>
+</tbody>
+</table>
+<p>Its precedence graph has a cycle:</p>
+<p><span class="math display"> T_1 \leftrightarrows T_2 </span></p>
+<p><em>A schedule is (conflict-)serializable iff its precedence graph
+has no cycle</em></p>
+<p>Intuitively, an edge <span class="math inline">T_i \to T_j</span>
+means there’s a pair actions <span class="math inline">a_i, a_j</span>
+that cannot be reordered due to a conflict, so <span
+class="math inline">a_i</span> must occur first in any reordering,
+meaning some part of <span class="math inline">T_i</span> must happen
+before <span class="math inline">T_j</span>.</p>
+<p>But if there’s another edge <span class="math inline">T_j \to
+T_i</span>, some part of <span class="math inline">T_j</span> would also
+happen before <span class="math inline">T_i</span>, which is impossible
+in a serial schedule.</p>
+<p>That was a lot of new concepts to learn! Let’s review:</p>
+<div class="incremental">
+<ul class="incremental">
+<li>We want to guarantee ACID when the DB is modified</li>
+<li>So we group actions into TXs as units</li>
+<li>Serial execution would lead to ACID, but slow</li>
+<li>We want serializable concurrent schedules</li>
+<li>Which are schedules equivalent to some serial ones</li>
+<li>Which we can check with the precedence graph</li>
+</ul>
+</div>
+<p>The way things are going might make you think this is how DB systems
+work:</p>
+<div class="incremental">
+<ul class="incremental">
+<li>A bunch of transaction actions get submitted to the DB</li>
+<li>Everytime the DB sees a new action, it checks serializability</li>
+<li>Which is done by constructing the precedence graph and checking for
+cycles</li>
+<li>If there’s a cycle, ???</li>
+</ul>
+</div>
+<p>The problem with this is that, if we check serializability <em>after
+the fact</em>, it might be too late.</p>
+<p>In reality, the DB guarantees serializable schedule <em>by
+construction</em> by using locks.<a href="#fn5" class="footnote-ref"
+id="fnref5" role="doc-noteref"><sup>5</sup></a></p>
+<p>The simplest approach is locking the whole DB every time:</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L(DB)</td>
+<td></td>
+</tr>
+<tr>
+<td>…</td>
+<td></td>
+</tr>
+<tr>
+<td>U(DB)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>L(DB)</td>
+</tr>
+<tr>
+<td></td>
+<td>…</td>
+</tr>
+<tr>
+<td></td>
+<td>U(DB)</td>
+</tr>
+</tbody>
+</table>
+<p>Each tx takes the lock before it starts, and unlocks after it’s done.
+This would result in a <em>serial</em> schedule.</p>
+<p>But locking the whole DB is too conservative! What if we “only lock
+what we need”?</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L(A); R(A)</td>
+<td></td>
+</tr>
+<tr>
+<td>W(A); U(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>L(A), R(A)</td>
+</tr>
+<tr>
+<td></td>
+<td>W(A), U(A)</td>
+</tr>
+<tr>
+<td></td>
+<td>L(B), R(B)</td>
+</tr>
+<tr>
+<td></td>
+<td>W(B), U(B)</td>
+</tr>
+<tr>
+<td>L(B); R(B)</td>
+<td></td>
+</tr>
+<tr>
+<td>W(B); U(B)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The schedule is not serializable! Try out a concrete example to
+see.</p>
+<p>Again, we’re facing a dilemma:</p>
+<ul>
+<li>locking everything is correct, but slow</li>
+<li>locking individual items is fast, but wrong</li>
+</ul>
+<p>The middle ground taken by most DBs is <strong>2-phase
+locking</strong>(2PL):</p>
+<ul>
+<li>an item must be locked before being read/written</li>
+<li>within each tx, all locks must precede all unlocks</li>
+</ul>
+<p>This still allows <em>some</em> degree of concurrency:</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L(A),R(A),W(A)</td>
+<td>L(B),R(B),W(B),U(B)</td>
+</tr>
+<tr>
+<td>L(B),R(B),W(B),U(A),U(B)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Here, because the tx need different items in the beginning, they can
+run in parallel; then once T<sub>2</sub> is done with B, T<sub>1</sub>
+can lock it.</p>
+<p>The main result in DB transactions is:</p>
+<p><strong>Theorem</strong>: 2PL guarantees serializability</p>
+<p>Some notations first:</p>
+<ul>
+<li>Let <span class="math inline">i \to j</span> denote an edge in the
+graph</li>
+<li>Let <span class="math inline">L_i(X), U_i(X)</span> denote tx <span
+class="math inline">i</span> locking/unlocking <span
+class="math inline">X</span></li>
+</ul>
+<p>We’ll also use this lemma:</p>
+<p><em>Lemma</em>: and edge <span class="math inline">i \to j</span>
+means the schedule contains a pattern <span class="math inline">U_i(X),
+\ldots, L_j(X)</span></p>
+<p>This is because the conflict edge means T<sub>i</sub> acts on <span
+class="math inline">X</span> before T<sub>j</sub>, and for that to
+happen, T<sub>i</sub> must unlock <span class="math inline">X</span>
+before T<sub>j</sub> locks it.</p>
+<p>Now, suppose we have a cycle involving 3 tx:</p>
+<p><span class="math display">1 \to 2, 2\to 3, 3\to 1</span></p>
+<p>Then, we must have this pattern:</p>
+<p><span class="math display">U_1, L_2, U_2, L_3, U_3, L_1</span></p>
+<p>But this violates 2PL, contradiction!</p>
+<p>So far, we have assumed every tx will eventually <code>COMMIT</code>,
+in which case 2PL is sufficient.</p>
+<p>But in many cases a tx may acutally get cancelled, e.g. if your card
+declines when buying tickets.</p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L(A); R(A); W(A); U(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>L(A); R(A); W(A); U(A); <code>COMMIT</code></td>
+</tr>
+<tr>
+<td><code>ROLLBACK</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Because tx is atomic, a cancelled tx needs to be undone. But here
+it’s too late! The effect of T<sub>1</sub> is taken in by T<sub>2</sub>
+and <code>COMMIT</code>ted into the DB.</p>
+<p>To fix this, we need <strong>strict 2PL</strong>, which additionally
+requires unlock to happen exactly at commit/rollback time.<a href="#fn6"
+class="footnote-ref" id="fnref6" role="doc-noteref"><sup>6</sup></a></p>
+<table>
+<thead>
+<tr>
+<th>T<sub>1</sub></th>
+<th>T<sub>2</sub></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L(A); R(A); W(A); ROLLBACK, U(A)</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>L(A); R(A); W(A); U(A); <code>COMMIT</code></td>
+</tr>
+</tbody>
+</table>
+<p>Another issue with locking is <em>deadlocks</em>:</p>
+<p>|T<sub>1</sub>: W(A),W(B)|T<sub>1</sub>: W(B),W(C)|T<sub>1</sub>:
+W(C),W(A)| |L(A),W(A)||| ||L(B),W(B)|| |||L(C),W(C)|
+|L(B)?|L(C)?|L(A)?|</p>
+<p>Here, after each thread grabs its lock, they then want each other’s
+lock for the next action. But because of 2PL, they can’t release any
+locks. Impasse!</p>
+<p>To resolve the deadlock, someone has to back up.</p>
+<p>First, to detect deadlocks, we need to construct the
+<em>wait-for</em> graph, where an edge <span class="math inline">i \to
+j</span> means <span class="math inline">i</span> is waiting for the
+lock held by <span class="math inline">j</span>.</p>
+<p>In our example, we have <span class="math inline">1\to 2, 2\to 3,
+3\to 1</span> – a cycle!</p>
+<p>Whenever there’s a cycle in the wait-for graph, there’s a
+deadlock.</p>
+<p>In that case, we must rollback a tx to break the cycle.</p>
+<section id="footnotes" class="footnotes footnotes-end-of-document"
+role="doc-endnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Run <code>sqlite3 test.db</code> in 2 different terminal
+tabs.<a href="#fnref1" class="footnote-back"
+role="doc-backlink">↩︎</a></p></li>
+<li id="fn2"><p>SQLite serializes writes, but allow concurrent reads.<a
+href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn3"><p>Formally, a schedule is a <em>partial ordering</em> of
+the actions.<a href="#fnref3" class="footnote-back"
+role="doc-backlink">↩︎</a></p></li>
+<li id="fn4"><p>Make sure you know what the bold words mean by now!<a
+href="#fnref4" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn5"><p>There <em>are</em> also approaches that check
+after-the-fact, covered later.<a href="#fnref5" class="footnote-back"
+role="doc-backlink">↩︎</a></p></li>
+<li id="fn6"><p>If you find “exactly the same time” confusing, think of
+it as unlocking <em>after</em> commit/rollback.<a href="#fnref6"
+class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section>
+<script src="https://unpkg.com/@antonz/runno@0.6.1/dist/runno.js"></script>
+<script src="https://unpkg.com/@antonz/codapi@0.20.0/dist/engine/wasi.js"></script>
+<script src="https://unpkg.com/@antonz/codapi@0.20.0/dist/snippet.js"></script>
+</body>
+</html>
